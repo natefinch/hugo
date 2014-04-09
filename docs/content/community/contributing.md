@@ -20,39 +20,34 @@ When you're ready to create a pull request, be sure to:
 ## Contribution Overview
 
 1. Fork Hugo from https://github.com/spf13/hugo
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Commit passing tests to validate changes.
-5. Run `go fmt`
-6. Squash commits into a single (or logically grouped) commits (`git rebase -i`)
-7. Push to the branch (`git push origin my-new-feature`)
-8. Create new Pull Request
+2. git clone your repo into $GOPATH/src/github.com/spf13/hugo (this makes the go tool happy)
+3. run 'go get' from that directory (this gets the dependencies)
+4. Create your feature branch (`git checkout -b my-new-feature`)
+5. Commit your changes (`git commit -am 'Add some feature'`)
+6. Commit passing tests to validate changes.
+7. Run `go fmt`
+8. Squash commits into a single (or logically grouped) commits (`git rebase -i`)
+9. Push to the branch (`git push origin my-new-feature`)
+10. Create new Pull Request
 
 
 # Building from source
 
 ## Clone locally (for contributors):
 
-    git clone https://github.com/spf13/hugo
-    cd hugo
+    mkdir -a $GOPATH/src/github.com/spf13/hugo
+    cd $GOPATH/src/github.com/spf13/hugo
+    git clone https://github.com/spf13/hugo .
     go get
-
-Because go expects all of your libraries to be found in either
-$GOROOT or $GOPATH, it's helpful to symlink the project to one
-of the following paths:
-
- * ln -s /path/to/your/hugo $GOPATH/src/github.com/spf13/hugo
- * ln -s /path/to/your/hugo $GOROOT/src/pkg/github.com/spf13/hugo
 
 ## Running Hugo
 
-    cd /path/to/hugo
-    go install github.com/spf13/hugo/hugolibs
-    go run main.go
+Make sure $GOPATH/bin is in your $PATH.
+
+    hugo
 
 ## Building Hugo
 
-    cd /path/to/hugo
-    go build -o hugo main.go
-    mv hugo /usr/local/bin/
+    cd $GOPATH/src/github.com/spf13/hugo
+    go install
 

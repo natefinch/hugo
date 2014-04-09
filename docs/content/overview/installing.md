@@ -39,15 +39,9 @@ you need to install the python-based pygments program. The procedure is outlined
 * Mercurial
 * Bazaar
 
-### Get directly from Github:
+### Download and install directly from Github:
 
     go get github.com/spf13/hugo
-
-### Building Hugo
-
-    cd /path/to/hugo
-    go build -o hugo main.go
-    mv hugo /usr/local/bin/
 
 ## Contributing
 
