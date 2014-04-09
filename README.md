@@ -56,15 +56,12 @@ is the most probable location.
 
 #### Clone locally (for contributors):
 
-    git clone https://github.com/spf13/hugo
-    cd hugo
+    fork on github
+    mkdir -a $GOPATH/src/github.com/spf13/hugo
+    cd $GOPATH/src/github.com/spf13/hugo
+    git clone https://github.com/<yourname>/hugo .
     go get
 
-Because go expects all of your libraries to be found in either $GOROOT or $GOPATH,
-it's helpful to symlink the project to one of the following paths:
-
- * ln -s /path/to/your/hugo $GOPATH/src/github.com/spf13/hugo
- * ln -s /path/to/your/hugo $GOROOT/src/pkg/github.com/spf13/hugo
 
 #### Get directly from Github:
 
@@ -74,16 +71,15 @@ If you only want to build from source, it's even easier.
 
 #### Building Hugo
 
-    cd /path/to/hugo
-    go build -o hugo main.go
-    mv hugo /usr/local/bin/
+    cd $GOPATH/src/github.com/spf13/hugo
+    go install
 
 #### Running Hugo
 
-    cd /path/to/hugo
-    go install github.com/spf13/hugo/hugolib
-    go run main.go
+Make sure $GOPATH/bin is in your $PATH 
 
+    hugo
+    
 #### Contribution Guidelines
 
 We welcome your contributions.  To make the process as seamless as possible, we ask for the following:
