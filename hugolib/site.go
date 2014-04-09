@@ -14,21 +14,24 @@
 package hugolib
 
 import (
-	"bitbucket.org/pkg/inflect"
 	"bytes"
 	"fmt"
-	"github.com/spf13/hugo/helpers"
-	"github.com/spf13/hugo/source"
-	"github.com/spf13/hugo/target"
-	"github.com/spf13/hugo/template/bundle"
-	"github.com/spf13/hugo/transform"
-	"github.com/spf13/nitro"
 	"html/template"
 	"io"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"bitbucket.org/pkg/inflect"
+	"github.com/spf13/hugo/helpers"
+	"github.com/spf13/hugo/source"
+	"github.com/spf13/hugo/target"
+	"github.com/spf13/hugo/template/bundle"
+	"github.com/spf13/hugo/transform"
+	jww "github.com/spf13/jwalterweatherman"
+	"github.com/spf13/nitro"
+	"github.com/spf13/viper"
 )
 
 var _ = transform.AbsURL
@@ -53,7 +56,6 @@ var DefaultTimer *nitro.B
 //
 // 5. The entire collection of files is written to disk.
 type Site struct {
-	Config     Config
 	Pages      Pages
 	Tmpl       bundle.Template
 	Indexes    IndexList
@@ -75,7 +77,7 @@ type SiteInfo struct {
 	Recent     *Pages
 	LastChange time.Time
 	Title      string
-	Config     *Config
+	ConfigGet  func(key string) interface{}
 	Permalinks PermalinkOverrides
 	Params     map[string]interface{}
 }
@@ -104,9 +106,9 @@ func (s *Site) Build() (err error) {
 		return
 	}
 	if err = s.Render(); err != nil {
-		fmt.Printf("Error rendering site: %s\nAvailable templates:\n", err)
+		jww.ERROR.Printf("Error rendering site: %s\nAvailable templates:\n", err)
 		for _, template := range s.Tmpl.Templates() {
-			fmt.Printf("\t%s\n", template.Name())
+			jww.ERROR.Printf("\t%s\n", template.Name())
 		}
 		return
 	}
@@ -190,7 +192,7 @@ func (s *Site) Render() (err error) {
 func (s *Site) checkDescriptions() {
 	for _, p := range s.Pages {
 		if len(p.Description) < 60 {
-			fmt.Println(p.FileName + " ")
+			jww.FEEDBACK.Println(p.FileName + " ")
 		}
 	}
 }
@@ -200,7 +202,7 @@ func (s *Site) initialize() (err error) {
 		return err
 	}
 
-	staticDir := s.Config.GetAbsPath(s.Config.StaticDir + "/")
+	staticDir := helpers.AbsPathify(viper.GetString("StaticDir") + "/")
 
 	s.Source = &source.Filesystem{
 		AvoidPaths: []string{staticDir},
@@ -214,26 +216,35 @@ func (s *Site) initialize() (err error) {
 }
 
 func (s *Site) initializeSiteInfo() {
+	params, ok := viper.Get("Params").(map[string]interface{})
+	if !ok {
+		params = make(map[string]interface{})
+	}
+
+	permalinks, ok := viper.Get("Permalinks").(PermalinkOverrides)
+	if !ok {
+		permalinks = make(PermalinkOverrides)
+	}
+
 	s.Info = SiteInfo{
-		BaseUrl:    template.URL(s.Config.BaseUrl),
-		Title:      s.Config.Title,
+		BaseUrl:    template.URL(helpers.SanitizeUrl(viper.GetString("BaseUrl"))),
+		Title:      viper.GetString("Title"),
 		Recent:     &s.Pages,
-		Config:     &s.Config,
-		Params:     s.Config.Params,
-		Permalinks: s.Config.Permalinks,
+		Params:     params,
+		Permalinks: permalinks,
 	}
 }
 
 func (s *Site) absLayoutDir() string {
-	return s.Config.GetAbsPath(s.Config.LayoutDir)
+	return helpers.AbsPathify(viper.GetString("LayoutDir"))
 }
 
 func (s *Site) absContentDir() string {
-	return s.Config.GetAbsPath(s.Config.ContentDir)
+	return helpers.AbsPathify(viper.GetString("ContentDir"))
 }
 
 func (s *Site) absPublishDir() string {
-	return s.Config.GetAbsPath(s.Config.PublishDir)
+	return helpers.AbsPathify(viper.GetString("PublishDir"))
 }
 
 func (s *Site) checkDirectories() (err error) {
@@ -274,7 +285,7 @@ func (s *Site) CreatePages() (err error) {
 				return err
 			}
 
-			if s.Config.BuildDrafts || !page.Draft {
+			if viper.GetBool("BuildDrafts") || !page.Draft {
 				s.Pages = append(s.Pages, page)
 			}
 
@@ -291,7 +302,10 @@ func (s *Site) BuildSiteMeta() (err error) {
 	s.Indexes = make(IndexList)
 	s.Sections = make(Index)
 
-	for _, plural := range s.Config.Indexes {
+	indexes := viper.GetStringMapString("Indexes")
+	jww.INFO.Printf("found indexes: %#v\n", indexes)
+
+	for _, plural := range indexes {
 		s.Indexes[plural] = make(Index)
 		for _, p := range s.Pages {
 			vals := p.GetParam(plural)
@@ -309,9 +323,7 @@ func (s *Site) BuildSiteMeta() (err error) {
 						s.Indexes[plural].Add(idx, x)
 					}
 				} else {
-					if s.Config.Verbose {
-						fmt.Fprintf(os.Stderr, "Invalid %s in %s\n", plural, p.File.FileName)
-					}
+					jww.ERROR.Printf("Invalid %s in %s\n", plural, p.File.FileName)
 				}
 			}
 		}
@@ -411,7 +423,9 @@ func (s *Site) RenderPages() (err error) {
 
 func (s *Site) RenderIndexes() (err error) {
 	var wg sync.WaitGroup
-	for sing, pl := range s.Config.Indexes {
+
+	indexes := viper.GetStringMapString("Indexes")
+	for sing, pl := range indexes {
 		for key, oo := range s.Indexes[pl] {
 			wg.Add(1)
 			go func(k string, o WeightedPages, singular string, plural string) (err error) {
@@ -448,7 +462,9 @@ func (s *Site) RenderIndexes() (err error) {
 func (s *Site) RenderIndexesIndexes() (err error) {
 	layout := "indexes/indexes.html"
 	if s.Tmpl.Lookup(layout) != nil {
-		for singular, plural := range s.Config.Indexes {
+
+		indexes := viper.GetStringMapString("Indexes")
+		for singular, plural := range indexes {
 			n := s.NewNode()
 			n.Title = strings.Title(plural)
 			s.setUrls(n, plural)
@@ -533,9 +549,12 @@ func (s *Site) RenderHomePage() error {
 }
 
 func (s *Site) Stats() {
-	fmt.Printf("%d pages created \n", len(s.Pages))
-	for _, pl := range s.Config.Indexes {
-		fmt.Printf("%d %s index created\n", len(s.Indexes[pl]), pl)
+	jww.FEEDBACK.Printf("%d pages created \n", len(s.Pages))
+
+	indexes := viper.GetStringMapString("Indexes")
+
+	for _, pl := range indexes {
+		jww.FEEDBACK.Printf("%d %s index created\n", len(s.Indexes[pl]), pl)
 	}
 }
 
@@ -546,7 +565,7 @@ func (s *Site) setUrls(n *Node, in string) {
 }
 
 func (s *Site) permalink(plink string) template.HTML {
-	return template.HTML(helpers.MakePermalink(string(s.Config.BaseUrl), s.prepUrl(plink)).String())
+	return template.HTML(helpers.MakePermalink(string(viper.GetString("BaseUrl")), s.prepUrl(plink)).String())
 }
 
 func (s *Site) prepUrl(in string) string {
@@ -554,11 +573,11 @@ func (s *Site) prepUrl(in string) string {
 }
 
 func (s *Site) PrettifyUrl(in string) string {
-	return helpers.UrlPrep(s.Config.UglyUrls, in)
+	return helpers.UrlPrep(viper.GetBool("UglyUrls"), in)
 }
 
 func (s *Site) PrettifyPath(in string) string {
-	return helpers.PathPrep(s.Config.UglyUrls, in)
+	return helpers.PathPrep(viper.GetBool("UglyUrls"), in)
 }
 
 func (s *Site) NewNode() *Node {
@@ -572,16 +591,14 @@ func (s *Site) render(d interface{}, out string, layouts ...string) (err error) 
 
 	layout := s.findFirstLayout(layouts...)
 	if layout == "" {
-		if s.Config.Verbose {
-			fmt.Printf("Unable to locate layout: %s\n", layouts)
-		}
+		jww.WARN.Printf("Unable to locate layout: %s\n", layouts)
 		return
 	}
 
 	transformLinks := transform.NewEmptyTransforms()
 
-	if s.Config.CanonifyUrls {
-		absURL, err := transform.AbsURL(s.Config.BaseUrl)
+	if viper.GetBool("CanonifyUrls") {
+		absURL, err := transform.AbsURL(viper.GetString("BaseUrl"))
 		if err != nil {
 			return err
 		}
@@ -601,7 +618,7 @@ func (s *Site) render(d interface{}, out string, layouts ...string) (err error) 
 	err = s.renderThing(d, layout, renderBuffer)
 	if err != nil {
 		// Behavior here should be dependent on if running in server or watch mode.
-		fmt.Println(fmt.Errorf("Rendering error: %v", err))
+		jww.ERROR.Println(fmt.Errorf("Rendering error: %v", err))
 		if !s.Running() {
 			os.Exit(-1)
 		}
@@ -631,7 +648,6 @@ func (s *Site) renderThing(d interface{}, layout string, w io.Writer) error {
 	if s.Tmpl.Lookup(layout) == nil {
 		return fmt.Errorf("Layout not found: %s", layout)
 	}
-	//defer w.Close()
 	return s.Tmpl.ExecuteTemplate(w, layout, d)
 }
 
@@ -644,7 +660,7 @@ func (s *Site) initTarget() {
 	if s.Target == nil {
 		s.Target = &target.Filesystem{
 			PublishDir: s.absPublishDir(),
-			UglyUrls:   s.Config.UglyUrls,
+			UglyUrls:   viper.GetBool("UglyUrls"),
 		}
 	}
 }
@@ -652,9 +668,7 @@ func (s *Site) initTarget() {
 func (s *Site) WritePublic(path string, reader io.Reader) (err error) {
 	s.initTarget()
 
-	if s.Config.Verbose {
-		fmt.Println(path)
-	}
+	jww.DEBUG.Println("writing to", path)
 	return s.Target.Publish(path, reader)
 }
 
@@ -666,9 +680,7 @@ func (s *Site) WriteAlias(path string, permalink template.HTML) (err error) {
 		}
 	}
 
-	if s.Config.Verbose {
-		fmt.Println(path)
-	}
+	jww.DEBUG.Println("alias created at", path)
 
 	return s.Alias.Publish(path, permalink)
 }

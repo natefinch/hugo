@@ -15,21 +15,25 @@ package commands
 
 import (
 	"fmt"
-	"github.com/mostafah/fsync"
-	"github.com/spf13/cobra"
-	"github.com/spf13/hugo/hugolib"
-	"github.com/spf13/hugo/utils"
-	"github.com/spf13/hugo/watcher"
-	"github.com/spf13/nitro"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mostafah/fsync"
+	"github.com/spf13/cobra"
+	"github.com/spf13/hugo/helpers"
+	"github.com/spf13/hugo/hugolib"
+	"github.com/spf13/hugo/utils"
+	"github.com/spf13/hugo/watcher"
+	jww "github.com/spf13/jwalterweatherman"
+	"github.com/spf13/nitro"
+	"github.com/spf13/viper"
 )
 
-var Config *hugolib.Config
+//var Config *hugolib.Config
 var HugoCmd = &cobra.Command{
 	Use:   "hugo",
 	Short: "Hugo is a very fast static site generator",
@@ -44,8 +48,8 @@ Complete documentation is available at http://hugo.spf13.com`,
 }
 var hugoCmdV *cobra.Command
 
-var BuildWatch, Draft, UglyUrls, Verbose bool
-var Source, Destination, BaseUrl, CfgFile string
+var BuildWatch, Draft, UglyUrls, Verbose, Logging, VerboseLog bool
+var Source, Destination, BaseUrl, CfgFile, LogFile string
 
 func Execute() {
 	AddCommands()
@@ -67,35 +71,87 @@ func init() {
 	HugoCmd.PersistentFlags().BoolVar(&UglyUrls, "uglyurls", false, "if true, use /filename.html instead of /filename/")
 	HugoCmd.PersistentFlags().StringVarP(&BaseUrl, "base-url", "b", "", "hostname (and path) to the root eg. http://spf13.com/")
 	HugoCmd.PersistentFlags().StringVar(&CfgFile, "config", "", "config file (default is path/config.yaml|json|toml)")
+	HugoCmd.PersistentFlags().BoolVar(&Logging, "log", false, "Enable Logging")
+	HugoCmd.PersistentFlags().StringVar(&LogFile, "logfile", "", "Log File path (if set, logging enabled automatically)")
+	HugoCmd.PersistentFlags().BoolVar(&VerboseLog, "verboselog", false, "verbose logging")
 	HugoCmd.PersistentFlags().BoolVar(&nitro.AnalysisOn, "stepAnalysis", false, "display memory and timing of different steps of the program")
 	HugoCmd.Flags().BoolVarP(&BuildWatch, "watch", "w", false, "watch filesystem for changes and recreate as needed")
 	hugoCmdV = HugoCmd
 }
 
 func InitializeConfig() {
-	Config = hugolib.SetupConfig(&CfgFile, &Source)
+	viper.SetConfigName(CfgFile)
+	viper.AddConfigPath(Source)
+	viper.ReadInConfig()
+
+	viper.SetDefault("ContentDir", "content")
+	viper.SetDefault("LayoutDir", "layouts")
+	viper.SetDefault("StaticDir", "static")
+	viper.SetDefault("PublishDir", "public")
+	viper.SetDefault("DefaultLayout", "post")
+	viper.SetDefault("BuildDrafts", false)
+	viper.SetDefault("UglyUrls", false)
+	viper.SetDefault("Verbose", false)
+	viper.SetDefault("CanonifyUrls", false)
+	viper.SetDefault("Indexes", map[string]string{"tag": "tags", "category": "categories"})
+	viper.SetDefault("Permalinks", make(hugolib.PermalinkOverrides, 0))
 
 	if hugoCmdV.PersistentFlags().Lookup("build-drafts").Changed {
-		Config.BuildDrafts = Draft
+		viper.Set("BuildDrafts", Draft)
 	}
 
 	if hugoCmdV.PersistentFlags().Lookup("uglyurls").Changed {
-		Config.UglyUrls = UglyUrls
+		viper.Set("UglyUrls", UglyUrls)
 	}
 
 	if hugoCmdV.PersistentFlags().Lookup("verbose").Changed {
-		Config.Verbose = Verbose
+		viper.Set("Verbose", Verbose)
 	}
+
+	if hugoCmdV.PersistentFlags().Lookup("logfile").Changed {
+		viper.Set("LogFile", LogFile)
+	}
+
 	if BaseUrl != "" {
-		Config.BaseUrl = BaseUrl
+		if !strings.HasSuffix(BaseUrl, "/") {
+			BaseUrl = BaseUrl + "/"
+		}
+		viper.Set("BaseUrl", BaseUrl)
 	}
 	if Destination != "" {
-		Config.PublishDir = Destination
+		viper.Set("PublishDir", Destination)
 	}
+
+	if Source != "" {
+		viper.Set("WorkingDir", Source)
+	} else {
+		dir, _ := helpers.FindCWD()
+		viper.Set("WorkingDir", dir)
+	}
+
+	if VerboseLog || Logging || (viper.IsSet("LogFile") && viper.GetString("LogFile") != "") {
+		if viper.IsSet("LogFile") && viper.GetString("LogFile") != "" {
+			jww.SetLogFile(viper.GetString("LogFile"))
+		} else {
+			jww.UseTempLogFile("hugo")
+		}
+	} else {
+		jww.DiscardLogging()
+	}
+
+	if viper.GetBool("verbose") {
+		jww.SetStdoutThreshold(jww.LevelDebug)
+	}
+
+	if VerboseLog {
+		jww.SetLogThreshold(jww.LevelDebug)
+	}
+
+	jww.INFO.Println("Using config file:", viper.ConfigFileUsed())
 }
 
 func build(watches ...bool) {
-	utils.CheckErr(copyStatic(), fmt.Sprintf("Error copying static files to %s", Config.GetAbsPath(Config.PublishDir)))
+	utils.CheckErr(copyStatic(), fmt.Sprintf("Error copying static files to %s", helpers.AbsPathify(viper.GetString("PublishDir"))))
 	watch := false
 	if len(watches) > 0 && watches[0] {
 		watch = true
@@ -103,27 +159,29 @@ func build(watches ...bool) {
 	utils.StopOnErr(buildSite(BuildWatch || watch))
 
 	if BuildWatch {
-		fmt.Println("Watching for changes in", Config.GetAbsPath(Config.ContentDir))
-		fmt.Println("Press ctrl+c to stop")
+		jww.FEEDBACK.Println("Watching for changes in", helpers.AbsPathify(viper.GetString("ContentDir")))
+		jww.FEEDBACK.Println("Press ctrl+c to stop")
 		utils.CheckErr(NewWatcher(0))
 	}
 }
 
 func copyStatic() error {
-	staticDir := Config.GetAbsPath(Config.StaticDir + "/")
+	staticDir := helpers.AbsPathify(viper.GetString("StaticDir")) + "/"
 	if _, err := os.Stat(staticDir); os.IsNotExist(err) {
 		return nil
 	}
 
+	publishDir := helpers.AbsPathify(viper.GetString("PublishDir")) + "/"
 	// Copy Static to Destination
-	return fsync.Sync(Config.GetAbsPath(Config.PublishDir+"/"), Config.GetAbsPath(Config.StaticDir+"/"))
+	jww.INFO.Println("syncing from", staticDir, "to", publishDir)
+	return fsync.Sync(publishDir, staticDir)
 }
 
 func getDirList() []string {
 	var a []string
 	walker := func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
-			fmt.Println("Walker: ", err)
+			jww.ERROR.Println("Walker: ", err)
 			return nil
 		}
 
@@ -133,16 +191,16 @@ func getDirList() []string {
 		return nil
 	}
 
-	filepath.Walk(Config.GetAbsPath(Config.ContentDir), walker)
-	filepath.Walk(Config.GetAbsPath(Config.LayoutDir), walker)
-	filepath.Walk(Config.GetAbsPath(Config.StaticDir), walker)
+	filepath.Walk(helpers.AbsPathify(viper.GetString("ContentDir")), walker)
+	filepath.Walk(helpers.AbsPathify(viper.GetString("LayoutDir")), walker)
+	filepath.Walk(helpers.AbsPathify(viper.GetString("StaticDir")), walker)
 
 	return a
 }
 
 func buildSite(watching ...bool) (err error) {
 	startTime := time.Now()
-	site := &hugolib.Site{Config: *Config}
+	site := &hugolib.Site{}
 	if len(watching) > 0 && watching[0] {
 		site.RunMode.Watching = true
 	}
@@ -151,7 +209,7 @@ func buildSite(watching ...bool) (err error) {
 		return
 	}
 	site.Stats()
-	fmt.Printf("in %v ms\n", int(1000*time.Since(startTime).Seconds()))
+	jww.FEEDBACK.Printf("in %v ms\n", int(1000*time.Since(startTime).Seconds()))
 	return nil
 }
 
@@ -182,9 +240,7 @@ func NewWatcher(port int) error {
 		for {
 			select {
 			case evs := <-watcher.Event:
-				if Verbose {
-					fmt.Println(evs)
-				}
+				jww.INFO.Println(evs)
 
 				static_changed := false
 				dynamic_changed := false
@@ -200,7 +256,7 @@ func NewWatcher(port int) error {
 						continue
 					}
 
-					isstatic := strings.HasPrefix(ev.Name, Config.GetAbsPath(Config.StaticDir))
+					isstatic := strings.HasPrefix(ev.Name, helpers.AbsPathify(viper.GetString("StaticDir")))
 					static_changed = static_changed || isstatic
 					dynamic_changed = dynamic_changed || !isstatic
 
@@ -214,7 +270,7 @@ func NewWatcher(port int) error {
 
 				if static_changed {
 					fmt.Print("Static file changed, syncing\n\n")
-					utils.CheckErr(copyStatic(), fmt.Sprintf("Error copying static files to %s", Config.GetAbsPath(Config.PublishDir)))
+					utils.StopOnErr(copyStatic(), fmt.Sprintf("Error copying static files to %s", helpers.AbsPathify(viper.GetString("PublishDir"))))
 				}
 
 				if dynamic_changed {
