@@ -1,14 +1,23 @@
 ---
-title: "Contributing to Hugo"
-date: "2013-07-01"
-aliases: ["/doc/contributing/", "/meta/contributing/"]
-groups: ["community"]
-groups_weight: 30
+aliases:
+- /doc/contributing/
+- /meta/contributing/
+date: 2013-07-01
+menu:
+  main:
+    parent: community
+next: /tutorials/github_pages_blog
+prev: /community/press
+title: Contributing to Hugo
+weight: 30
 ---
 
-We welcome all contributions. Feel free to pick something from the roadmap
+All contributions to Hugo are welcome. Whether you want to scratch an itch, or simply contribute to the project. Feel free to pick something from the roadmap
 or contact [spf13](http://spf13.com) about what may make sense
-to do next. Go ahead and fork the project and make your changes.  *We encourage pull requests to discuss code changes.*
+to do next.
+
+You should fork the project and make your changes.  *We encourage pull requests to discuss code changes.*
+
 
 When you're ready to create a pull request, be sure to:
 

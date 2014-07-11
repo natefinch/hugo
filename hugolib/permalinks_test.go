@@ -14,9 +14,8 @@ var testdataPermalinks = []struct {
 }{
 	{"/:year/:month/:title/", true, "/2012/04/spf13-vim-3.0-release-and-new-website/"},
 	{"/:title", true, "/spf13-vim-3.0-release-and-new-website"},
-	{":title", false, ""},
+	{":title", true, "spf13-vim-3.0-release-and-new-website"},
 	{"/blog/:year/:yearday/:title", true, "/blog/2012/97/spf13-vim-3.0-release-and-new-website"},
-	{":fred", false, ""},
 	{"/blog/:fred", false, ""},
 	{"/:year//:title", false, ""},
 	{
@@ -54,7 +53,7 @@ func TestPermalinkValidation(t *testing.T) {
 }
 
 func TestPermalinkExpansion(t *testing.T) {
-	page, err := ReadFrom(strings.NewReader(SIMPLE_PAGE_JSON), "blue/test-page.md")
+	page, err := NewPageFrom(strings.NewReader(SIMPLE_PAGE_JSON), "blue/test-page.md")
 	if err != nil {
 		t.Fatalf("failed before we began, could not parse SIMPLE_PAGE_JSON: %s", err)
 	}

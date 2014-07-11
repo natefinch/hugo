@@ -13,9 +13,9 @@ Sample Text
 `
 
 func TestDegenerateMissingFolderInPageFilename(t *testing.T) {
-	p, err := ReadFrom(strings.NewReader(SIMPLE_PAGE_YAML), path.Join("foobar"))
+	p, err := NewPageFrom(strings.NewReader(SIMPLE_PAGE_YAML), path.Join("foobar"))
 	if err != nil {
-		t.Fatalf("Error in ReadFrom")
+		t.Fatalf("Error in NewPageFrom")
 	}
 	if p.Section != "" {
 		t.Fatalf("No section should be set for a file path: foobar")
@@ -28,20 +28,24 @@ func TestNewPageWithFilePath(t *testing.T) {
 		section string
 		layout  []string
 	}{
-		{path.Join("sub", "foobar.html"), "sub", L("sub/single.html", "single.html")},
-		{path.Join("content", "foobar.html"), "", L("page/single.html", "single.html")},
-		{path.Join("content", "sub", "foobar.html"), "sub", L("sub/single.html", "single.html")},
-		{path.Join("content", "dub", "sub", "foobar.html"), "dub/sub", L("dub/sub/single.html", "dub/single.html", "single.html")},
+		{path.Join("sub", "foobar.html"), "sub", L("sub/single.html", "_default/single.html")},
+		{path.Join("content", "foobar.html"), "", L("page/single.html", "_default/single.html")},
+		{path.Join("content", "sub", "foobar.html"), "sub", L("sub/single.html", "_default/single.html")},
+		{path.Join("content", "dub", "sub", "foobar.html"), "dub/sub", L("dub/sub/single.html", "dub/single.html", "_default/single.html")},
 	}
 
 	for _, el := range toCheck {
-		p, err := ReadFrom(strings.NewReader(SIMPLE_PAGE_YAML), el.input)
+		p, err := NewPageFrom(strings.NewReader(SIMPLE_PAGE_YAML), el.input)
 		p.guessSection()
 		if err != nil {
 			t.Errorf("Reading from SIMPLE_PAGE_YAML resulted in an error: %s", err)
 		}
 		if p.Section != el.section {
 			t.Errorf("Section not set to %s for page %s. Got: %s", el.section, el.input, p.Section)
+		}
+
+		for _, y := range el.layout {
+			el.layout = append(el.layout, "theme/"+y)
 		}
 
 		if !listEqual(p.Layout(), el.layout) {

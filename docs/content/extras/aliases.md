@@ -1,12 +1,16 @@
 ---
-title: "Aliases"
-date: "2013-07-09"
 aliases:
-    - /doc/redirects/
-    - /doc/alias/
-    - /doc/aliases/
-groups: ["extras"]
-groups_weight: 20
+- /doc/redirects/
+- /doc/alias/
+- /doc/aliases/
+date: 2013-07-09
+menu:
+  main:
+    parent: extras
+next: /extras/builders
+prev: /taxonomies/ordering
+title: Aliases
+weight: 10
 ---
 
 For people migrating existing published content to Hugo theres a good chance
@@ -16,13 +20,12 @@ Luckily, this can be handled easily with aliases in Hugo.
 
 ## Example
 **content/posts/my-awesome-blog-post.md**
-{{% highlight yaml %}}
----
-aliases:
-    - /posts/my-original-url/
-    - /2010/even-earlier-url.html
----
-{{% /highlight %}}
+
+    ---
+    aliases:
+        - /posts/my-original-url/
+        - /2010/even-earlier-url.html
+    ---
 
 Now when you go to any of the aliases locations they
 will redirect to the page.

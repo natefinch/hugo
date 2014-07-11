@@ -1,11 +1,15 @@
-+++
-title = "Press, Blogs and Media Coverage"
-date = 2014-03-24T20:00:00Z 
-linktitle = "Press"
-groups = ["community"]
-groups_weight = 20
-notoc = true
-+++
+---
+date: 2014-03-24T20:00:00Z
+linktitle: Press
+menu:
+  main:
+    parent: community
+next: /community/contributing
+notoc: true
+prev: /community/mailing-list
+title: Press, Blogs and Media Coverage
+weight: 20
+---
 
 Hugo has been featured in the following Blog Posts, Press and Media.
 

@@ -52,7 +52,7 @@ func pageMust(p *Page, err error) *Page {
 }
 
 func TestDegenerateRenderThingMissingTemplate(t *testing.T) {
-	p, _ := ReadFrom(strings.NewReader(PAGE_SIMPLE_TITLE), "content/a/file.md")
+	p, _ := NewPageFrom(strings.NewReader(PAGE_SIMPLE_TITLE), "content/a/file.md")
 	p.Convert()
 	s := new(Site)
 	s.prepTemplates()
@@ -109,7 +109,7 @@ func TestRenderThing(t *testing.T) {
 	s.prepTemplates()
 
 	for i, test := range tests {
-		p, err := ReadFrom(strings.NewReader(test.content), "content/a/file.md")
+		p, err := NewPageFrom(strings.NewReader(test.content), "content/a/file.md")
 		p.Convert()
 		if err != nil {
 			t.Fatalf("Error parsing buffer: %s", err)
@@ -158,7 +158,7 @@ func TestRenderThingOrDefault(t *testing.T) {
 	s.prepTemplates()
 
 	for i, test := range tests {
-		p, err := ReadFrom(strings.NewReader(PAGE_SIMPLE_TITLE), "content/a/file.md")
+		p, err := NewPageFrom(strings.NewReader(PAGE_SIMPLE_TITLE), "content/a/file.md")
 		if err != nil {
 			t.Fatalf("Error parsing buffer: %s", err)
 		}
@@ -205,7 +205,7 @@ func TestTargetPath(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		p := pageMust(ReadFrom(strings.NewReader(test.content), helpers.AbsPathify(test.doc)))
+		p := pageMust(NewPageFrom(strings.NewReader(test.content), helpers.AbsPathify(test.doc)))
 
 		expected := test.expectedOutFile
 
@@ -217,6 +217,66 @@ func TestTargetPath(t *testing.T) {
 			t.Errorf("%s => p.Section expected: %s, got: %s", test.doc, test.expectedSection, p.Section)
 		}
 	}
+}
+
+func TestDraftAndFutureRender(t *testing.T) {
+	files := make(map[string][]byte)
+	target := &target.InMemoryTarget{Files: files}
+	sources := []source.ByteSource{
+		{"sect/doc1.md", []byte("---\ntitle: doc1\ndraft: true\npublishdate: \"2414-05-29\"\n---\n# doc1\n*some content*"), "sect"},
+		{"sect/doc2.md", []byte("---\ntitle: doc2\ndraft: true\npublishdate: \"2012-05-29\"\n---\n# doc2\n*some content*"), "sect"},
+		{"sect/doc3.md", []byte("---\ntitle: doc3\ndraft: false\npublishdate: \"2414-05-29\"\n---\n# doc3\n*some content*"), "sect"},
+		{"sect/doc4.md", []byte("---\ntitle: doc4\ndraft: false\npublishdate: \"2012-05-29\"\n---\n# doc4\n*some content*"), "sect"},
+	}
+
+	siteSetup := func() *Site {
+		s := &Site{
+			Target: target,
+			Source: &source.InMemorySource{ByteSource: sources},
+		}
+
+		s.initializeSiteInfo()
+
+		if err := s.CreatePages(); err != nil {
+			t.Fatalf("Unable to create pages: %s", err)
+		}
+		return s
+	}
+
+	viper.Set("baseurl", "http://auth/bub")
+
+	// Testing Defaults.. Only draft:true and publishDate in the past should be rendered
+	s := siteSetup()
+	if len(s.Pages) != 1 {
+		t.Fatal("Draft or Future dated content published unexpectedly")
+	}
+
+	// only publishDate in the past should be rendered
+	viper.Set("BuildDrafts", true)
+	s = siteSetup()
+	if len(s.Pages) != 2 {
+		t.Fatal("Future Dated Posts published unexpectedly")
+	}
+
+	//  drafts should not be rendered, but all dates should
+	viper.Set("BuildDrafts", false)
+	viper.Set("BuildFuture", true)
+	s = siteSetup()
+	if len(s.Pages) != 2 {
+		t.Fatal("Draft posts published unexpectedly")
+	}
+
+	// all 4 should be included
+	viper.Set("BuildDrafts", true)
+	viper.Set("BuildFuture", true)
+	s = siteSetup()
+	if len(s.Pages) != 4 {
+		t.Fatal("Drafts or Future posts not included as expected")
+	}
+
+	//setting defaults back
+	viper.Set("BuildDrafts", false)
+	viper.Set("BuildFuture", false)
 }
 
 func TestSkipRender(t *testing.T) {
@@ -423,7 +483,7 @@ func TestOrderedPages(t *testing.T) {
 	}
 }
 
-var PAGE_WITH_WEIGHTED_INDEXES_2 = []byte(`+++
+var PAGE_WITH_WEIGHTED_TAXONOMIES_2 = []byte(`+++
 tags = [ "a", "b", "c" ]
 tags_weight = 22
 categories = ["d"]
@@ -432,7 +492,7 @@ categories_weight = 44
 +++
 Front Matter with weighted tags and categories`)
 
-var PAGE_WITH_WEIGHTED_INDEXES_1 = []byte(`+++
+var PAGE_WITH_WEIGHTED_TAXONOMIES_1 = []byte(`+++
 tags = [ "a" ]
 tags_weight = 33
 title = "bar"
@@ -443,7 +503,7 @@ date = 1979-05-27T07:32:00Z
 +++
 Front Matter with weighted tags and categories`)
 
-var PAGE_WITH_WEIGHTED_INDEXES_3 = []byte(`+++
+var PAGE_WITH_WEIGHTED_TAXONOMIES_3 = []byte(`+++
 title = "bza"
 categories = [ "e" ]
 categories_weight = 11
@@ -452,21 +512,21 @@ date = 2010-05-27T07:32:00Z
 +++
 Front Matter with weighted tags and categories`)
 
-func TestWeightedIndexes(t *testing.T) {
+func TestWeightedTaxonomies(t *testing.T) {
 	files := make(map[string][]byte)
 	target := &target.InMemoryTarget{Files: files}
 	sources := []source.ByteSource{
-		{"sect/doc1.md", PAGE_WITH_WEIGHTED_INDEXES_1, "sect"},
-		{"sect/doc2.md", PAGE_WITH_WEIGHTED_INDEXES_2, "sect"},
-		{"sect/doc3.md", PAGE_WITH_WEIGHTED_INDEXES_3, "sect"},
+		{"sect/doc1.md", PAGE_WITH_WEIGHTED_TAXONOMIES_1, "sect"},
+		{"sect/doc2.md", PAGE_WITH_WEIGHTED_TAXONOMIES_2, "sect"},
+		{"sect/doc3.md", PAGE_WITH_WEIGHTED_TAXONOMIES_3, "sect"},
 	}
-	indexes := make(map[string]string)
+	taxonomies := make(map[string]string)
 
-	indexes["tag"] = "tags"
-	indexes["category"] = "categories"
+	taxonomies["tag"] = "tags"
+	taxonomies["category"] = "categories"
 
 	viper.Set("baseurl", "http://auth/bub")
-	viper.Set("indexes", indexes)
+	viper.Set("taxonomies", taxonomies)
 	s := &Site{
 		Target: target,
 		Source: &source.InMemorySource{ByteSource: sources},
@@ -481,15 +541,15 @@ func TestWeightedIndexes(t *testing.T) {
 		t.Fatalf("Unable to build site metadata: %s", err)
 	}
 
-	if s.Indexes["tags"]["a"][0].Page.Title != "foo" {
-		t.Errorf("Pages in unexpected order, 'foo' expected first, got '%v'", s.Indexes["tags"]["a"][0].Page.Title)
+	if s.Taxonomies["tags"]["a"][0].Page.Title != "foo" {
+		t.Errorf("Pages in unexpected order, 'foo' expected first, got '%v'", s.Taxonomies["tags"]["a"][0].Page.Title)
 	}
 
-	if s.Indexes["categories"]["d"][0].Page.Title != "bar" {
-		t.Errorf("Pages in unexpected order, 'bar' expected first, got '%v'", s.Indexes["categories"]["d"][0].Page.Title)
+	if s.Taxonomies["categories"]["d"][0].Page.Title != "bar" {
+		t.Errorf("Pages in unexpected order, 'bar' expected first, got '%v'", s.Taxonomies["categories"]["d"][0].Page.Title)
 	}
 
-	if s.Indexes["categories"]["e"][0].Page.Title != "bza" {
-		t.Errorf("Pages in unexpected order, 'bza' expected first, got '%v'", s.Indexes["categories"]["e"][0].Page.Title)
+	if s.Taxonomies["categories"]["e"][0].Page.Title != "bza" {
+		t.Errorf("Pages in unexpected order, 'bza' expected first, got '%v'", s.Taxonomies["categories"]["e"][0].Page.Title)
 	}
 }

@@ -15,12 +15,14 @@ package helpers
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
+
 	"github.com/spf13/viper"
 )
 
@@ -30,6 +32,10 @@ var sanitizeRegexp = regexp.MustCompile("[^a-zA-Z0-9./_-]")
 // E.g. Social Media -> social-media
 func MakePath(s string) string {
 	return UnicodeSanitize(strings.ToLower(strings.Replace(strings.TrimSpace(s), " ", "-", -1)))
+}
+
+func MakeTitle(inpath string) string {
+	return strings.Replace(strings.TrimSpace(inpath), "-", " ", -1)
 }
 
 func Sanitize(s string) string {
@@ -66,6 +72,35 @@ func DirExists(path string) (bool, error) {
 	return false, err
 }
 
+func IsDir(path string) (bool, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return fi.IsDir(), nil
+}
+
+func IsEmpty(path string) (bool, error) {
+	if b, _ := Exists(path); !b {
+		return false, fmt.Errorf("%q path does not exist", path)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if fi.IsDir() {
+		f, err := os.Open(path)
+		if err != nil {
+			return false, err
+		}
+		list, err := f.Readdir(-1)
+		f.Close()
+		return len(list) == 0, nil
+	} else {
+		return fi.Size() == 0, nil
+	}
+}
+
 // Check if File / Directory Exists
 func Exists(path string) (bool, error) {
 	_, err := os.Stat(path)
@@ -86,6 +121,11 @@ func AbsPathify(inPath string) string {
 	return filepath.Clean(filepath.Join(viper.GetString("WorkingDir"), inPath))
 }
 
+func Filename(in string) (name string) {
+	name, _ = FileAndExt(in)
+	return
+}
+
 func FileAndExt(in string) (name string, ext string) {
 	ext = path.Ext(in)
 	base := path.Base(in)
@@ -97,6 +137,18 @@ func FileAndExt(in string) (name string, ext string) {
 	}
 
 	return
+}
+
+func GuessSection(in string) string {
+	x := strings.Split(in, "/")
+	x = x[:len(x)-1]
+	if len(x) == 0 {
+		return ""
+	}
+	if x[0] == "content" {
+		x = x[1:]
+	}
+	return path.Join(x...)
 }
 
 func PathPrep(ugly bool, in string) string {
@@ -150,4 +202,54 @@ func FindCWD() (string, error) {
 	}
 
 	return path, nil
+}
+
+func SafeWriteToDisk(inpath string, r io.Reader) (err error) {
+	dir, _ := filepath.Split(inpath)
+	ospath := filepath.FromSlash(dir)
+
+	if ospath != "" {
+		err = os.MkdirAll(ospath, 0777) // rwx, rw, r
+		if err != nil {
+			return
+		}
+	}
+
+	exists, err := Exists(inpath)
+	if err != nil {
+		return
+	}
+	if exists {
+		return fmt.Errorf("%v already exists", inpath)
+	}
+
+	file, err := os.Create(inpath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, r)
+	return
+}
+
+func WriteToDisk(inpath string, r io.Reader) (err error) {
+	dir, _ := filepath.Split(inpath)
+	ospath := filepath.FromSlash(dir)
+
+	if ospath != "" {
+		err = os.MkdirAll(ospath, 0777) // rwx, rw, r
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	file, err := os.Create(inpath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, r)
+	return
 }
