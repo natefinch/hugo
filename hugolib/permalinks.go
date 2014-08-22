@@ -29,18 +29,18 @@ var knownPermalinkAttributes map[string]PageToPermaAttribute
 func (pp PathPattern) validate() bool {
 	fragments := strings.Split(string(pp[1:]), "/")
 	var bail = false
-	for i := range fragments {
+	for _, frag := range fragments {
 		if bail {
 			return false
 		}
-		if len(fragments[i]) == 0 {
+		if len(frag) == 0 {
 			bail = true
 			continue
 		}
-		if !strings.HasPrefix(fragments[i], ":") {
+		if !strings.HasPrefix(frag, ":") {
 			continue
 		}
-		k := strings.ToLower(fragments[i][1:])
+		k := strings.ToLower(frag[1:])
 		if _, ok := knownPermalinkAttributes[k]; !ok {
 			return false
 		}

@@ -14,6 +14,7 @@
 package helpers
 
 import (
+	"fmt"
 	"net/url"
 	"path"
 
@@ -57,11 +58,18 @@ func MakePermalink(host, plink string) *url.URL {
 		panic(err)
 	}
 
-	path, err := url.Parse(plink)
+	p, err := url.Parse(plink)
 	if err != nil {
 		panic(err)
 	}
-	return base.ResolveReference(path)
+
+	if p.Host != "" {
+		panic(fmt.Errorf("Can't make permalink from absolute link %q", plink))
+	}
+
+	base.Path = path.Join(base.Path, p.Path)
+
+	return base
 }
 
 func UrlPrep(ugly bool, in string) string {

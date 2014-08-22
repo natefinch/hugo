@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -55,7 +56,11 @@ func server(cmd *cobra.Command, args []string) {
 	InitializeConfig()
 
 	if BaseUrl == "" {
-		BaseUrl = "http://localhost"
+		// this maintains the subdirectory path on the configured BaseUrl, but
+		// switches the host to localhost.
+		u := getUrl(viper.GetString("BaseUrl"))
+		u.Host = "localhost"
+		BaseUrl = u.String()
 	}
 
 	if cmd.Flags().Lookup("disableLiveReload").Changed {
@@ -66,8 +71,10 @@ func server(cmd *cobra.Command, args []string) {
 		viper.Set("Watch", true)
 	}
 
-	if !strings.HasPrefix(BaseUrl, "http://") {
-		BaseUrl = "http://" + BaseUrl
+	u := getUrl(BaseUrl)
+	if u.Scheme != "http" {
+		u.Scheme = "http"
+		BaseUrl = u.String()
 	}
 
 	l, err := net.Listen("tcp", ":"+strconv.Itoa(serverPort))
@@ -86,7 +93,16 @@ func server(cmd *cobra.Command, args []string) {
 	viper.Set("port", serverPort)
 
 	if serverAppend {
-		viper.Set("BaseUrl", strings.TrimSuffix(BaseUrl, "/")+":"+strconv.Itoa(serverPort))
+		u := getUrl(BaseUrl)
+		host := u.Host
+		if strings.Contains(host, ":") {
+			host, _, err = net.SplitHostPort(u.Host)
+			if err != nil {
+				jww.ERROR.Fatalf("Failed to parse BaseUrl Host: %s", err)
+			}
+		}
+		u.Host = fmt.Sprintf("%s:%s", host, strconv.Itoa(serverPort))
+		viper.Set("BaseUrl", u.String())
 	} else {
 		viper.Set("BaseUrl", strings.TrimSuffix(BaseUrl, "/"))
 	}
@@ -110,10 +126,26 @@ func serve(port int) {
 	jww.FEEDBACK.Printf("Web Server is available at %s\n", viper.GetString("BaseUrl"))
 	fmt.Println("Press ctrl+c to stop")
 
-	http.Handle("/", http.FileServer(http.Dir(helpers.AbsPathify(viper.GetString("PublishDir")))))
+	fileserver := http.FileServer(http.Dir(helpers.AbsPathify(viper.GetString("PublishDir"))))
+
+	u := getUrl(viper.GetString("BaseUrl"))
+	if u.Path == "" || u.Path == "/" {
+		http.Handle("/", fileserver)
+	} else {
+		http.Handle(u.Path+"/", http.StripPrefix(u.Path+"/", fileserver))
+	}
+
 	err := http.ListenAndServe(":"+strconv.Itoa(port), nil)
 	if err != nil {
 		jww.ERROR.Printf("Error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+func getUrl(s string) *url.URL {
+	u, err := url.Parse(s)
+	if err != nil {
+		jww.ERROR.Fatalf("Failed to parse url %q: %s", s, err)
+	}
+	return u
 }

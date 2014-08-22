@@ -257,7 +257,7 @@ func (p *Page) permalink() (*url.URL, error) {
 	var err error
 
 	if len(pUrl) > 0 {
-		return helpers.MakePermalink(baseUrl, pUrl), nil
+		return url.Parse(pUrl)
 	}
 
 	if override, ok := p.Site.Permalinks[p.Section]; ok {
@@ -266,16 +266,19 @@ func (p *Page) permalink() (*url.URL, error) {
 		if err != nil {
 			return nil, err
 		}
-		// fmt.Printf("have a section override for %q in section %s → %s\n", p.Title, p.Section, permalink)
-	} else {
-		if len(pSlug) > 0 {
-			permalink = helpers.UrlPrep(viper.GetBool("UglyUrls"), path.Join(dir, p.Slug+"."+p.Extension))
-		} else {
-			_, t := path.Split(p.FileName)
-			permalink = helpers.UrlPrep(viper.GetBool("UglyUrls"), path.Join(dir, helpers.ReplaceExtension(strings.TrimSpace(t), p.Extension)))
-		}
+		return helpers.MakePermalink(baseUrl, permalink), nil
 	}
 
+	if len(pSlug) > 0 {
+		permalink = helpers.UrlPrep(viper.GetBool("UglyUrls"), path.Join(dir, p.Slug+"."+p.Extension))
+		return helpers.MakePermalink(baseUrl, permalink), nil
+	}
+
+	filename := path.Base(p.FileName)
+	filename = strings.TrimSpace(filename)
+	filename = helpers.ReplaceExtension(filename, p.Extension)
+	filepath := path.Join(dir, filename)
+	permalink = helpers.UrlPrep(viper.GetBool("UglyUrls"), filepath)
 	return helpers.MakePermalink(baseUrl, permalink), nil
 }
 

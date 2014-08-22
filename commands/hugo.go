@@ -153,6 +153,7 @@ func InitializeConfig() {
 	if hugoCmdV.PersistentFlags().Lookup("logFile").Changed {
 		viper.Set("LogFile", LogFile)
 	}
+
 	if BaseUrl != "" {
 		if !strings.HasSuffix(BaseUrl, "/") {
 			BaseUrl = BaseUrl + "/"
